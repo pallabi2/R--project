@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+    <title>Tree Example</title>
+    <style type="text/css">
+    	.scrollable-list {
+    		width: 100%;
+    		height: 85vh !important;
+		    margin: 1vh 0;
+		    border: 1px solid greenyellow;
+		    border-radius: 5px;
+		    padding: 3px;
+    	}
+
+    	.scrollable-list>option {
+    		white-space: pre-wrap;
+    		margin: 5px 2px;
+		    border: 1px solid #ddd;
+		    border-radius: 5px;
+		    overflow: hidden;
+    	}
+
+    	.panel-label {
+    		border: 1px solid #aaa;
+		    border-radius: 5px;
+		    background-color: #eee;
+		    cursor: move;	    
+     		height: 28px;
+    	}
+
+    	.panel-content {
+    		width: 100%;
+    	}
+
+    	.panel-btn {
+    		width: 10px;
+		    margin: auto 10px;
+		    cursor: pointer;
+		}
+
+		.panel-btn.left {
+			float: left;
+		}
+
+		.panel-btn.right {
+			float: right;
+		}
+
+		.link-l1-l2 {
+			stroke: #999;
+			stroke-width: 1px;
+		}
+
+		.link-l2-l3 {
+			stroke: blue;
+			stroke-width: 1px;
+		}
+
+    	/* width */
+		::-webkit-scrollbar {
+		    width: 10px;
+		}
+
+		/* Track */
+		::-webkit-scrollbar-track {
+		    box-shadow: inset 0 0 6px grey; 
+		    border-radius: 5px;
+		}
+		 
+		/* Handle */
+		::-webkit-scrollbar-thumb {
+		    background: greenyellow; 
+		    border-radius: 5px;
+		}
+
+		/* Handle on hover */
+		::-webkit-scrollbar-thumb:hover {
+		    background: green; 
+		}
+    </style>
+  </head>
+
+  <body onload="pageLoad();">
+  <div>
+  	<select id="grp-criteria" onchange="reloadTree();">
+  		<option value=""></option>
+  		<option value="geo">Geo Metadata</option>
+  		<option value="chron">Chrono Metadata</option>
+  		<option value="auth">Authors</option>
+  	</select>
+  </div>
+  <svg id="mySVG" width="1250" height="800" onmouseup="endDrag()" onmousemove="drag(evt)">
+	<foreignObject id="dragTarget1" y="10" width="30%" height="30%">
+		<div id="l1-panel" class="panel-content">
+			<div onmousedown="startDrag(this)" class="text-center text-uppercase panel-label">
+				<div class="panel-btn left" onclick="changeFontSize($(this), '-');">&lt;</div>
+				<span id="l1-label"></span>
+				<div class="panel-btn right" onclick="changeFontSize($(this), '+');">&gt;</div>
+			</div>
+			<select id="l1-data" class="scrollable-list" onscroll="connectOptionsL1L2();" onchange="populateL2List();" multiple="multiple"></select>
+		</div>
+	</foreignObject>
+	<foreignObject id="dragTarget2" y="10" width="30%" height="30%">
+		<div id="l2-panel" class="panel-content">
+			<div onmousedown="startDrag(this)" class="text-center text-uppercase panel-label">
+				<div class="panel-btn left" onclick="changeFontSize($(this), '-');">&lt;</div>
+				References
+				<div class="panel-btn right" onclick="changeFontSize($(this), '+');">&gt;</div>
+			</div>
+			<select id="l2-data" class="scrollable-list" onscroll="{connectOptionsL1L2(); connectOptionsL2L3();}" onchange="populateL3List();" multiple="multiple"></select>
+		</div>
+	</foreignObject>
+	<foreignObject id="dragTarget3" y="10" width="30%" height="30%">
+		<div id="l3-panel" class="panel-content">
+			<div onmousedown="startDrag(this)" class="text-center text-uppercase panel-label">
+				<div class="panel-btn left" onclick="changeFontSize($(this), '-');">&lt;</div>
+				Titles
+				<div class="panel-btn right" onclick="changeFontSize($(this), '+');">&gt;</div>
+			</div>
+			<select id="l3-data" class="scrollable-list" onscroll="connectOptionsL2L3();" onchange="viewArticle();" multiple="multiple"></select>
+		</div>
+	</foreignObject>
+  </svg>
+  <!-- Modal -->
+<div class="modal fade" id="myModal" tabindex="-1" role="dialog" aria-labelledby="myModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <button type="button" class="close" data-dismiss="modal" aria-hidden="true">&times;</button>
+        <h4 class="modal-title" id="myModalLabel"></h4>
+      </div>
+      <div class="modal-body">
+          <iframe id= "iFrame_content" src="" width="100%" height="100%" frameborder="0" allowtransparency="true"></iframe>  
+      </div>
+    </div>
+    <!-- /.modal-content -->
+  </div>
+  <!-- /.modal-dialog -->
+</div>
+<!-- /.modal -->
+
+<script src="https://code.jquery.com/jquery-3.3.1.min.js" integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8=" crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy" crossorigin="anonymous"></script>
+	
+<script>
+var treeData = {};
+
+function pageLoad() {
+	$('#l1-panel').hide();
+	$('#l2-panel').hide();
+	$('#l3-panel').hide();
+	var width = $('#mySVG').attr('width');
+	var lOffset = 20;
+	$('#dragTarget1').attr('x', lOffset);
+	$('#dragTarget2').attr('x', width/3 + lOffset);
+	$('#dragTarget3').attr('x', 2*width/3 + lOffset);
+}
+
+function reloadTree() {
+	var criteria = $('#grp-criteria').val();
+	d3.selectAll('line').remove();
+	if(criteria === "") {
+		$('#l1-panel').hide();
+		$('#l2-panel').hide();
+		$('#l3-panel').hide();
+		return;
+	}
+	$.get("Issues.txt", function(Issues_data, status){
+		var IssuesResponseJSON = JSON.parse(Issues_data);
+		var count = 0;
+		treeData = {};
+		for(var j = 0; j < IssuesResponseJSON.length; j++)
+		{
+			getMaterialsinIssue(IssuesResponseJSON[j], treeData, criteria, function() {
+				count++;
+				if(count === IssuesResponseJSON.length) {
+					$('#l1-data').empty();
+					$('#l2-panel').hide();
+					$('#l3-panel').hide();
+					convertObjectToL1List(treeData).map(function (item) {
+						$('#l1-data').append('<option value="' + item + '" id="' + item.replace(/\W/g, '') + '">' + item + "</option>");
+					});
+					$('#l1-label').text(criteria);
+					if($('#l1-data').children().length > 0) {
+						$('#l1-panel').show();				
+					}
+				}
+			});
+		}
+	});
+}
+
+function processMaterialData(material, criteria, treeData) {
+	var l1Data = null;
+	if(criteria === 'geo') {
+		l1Data = material.coverageGeo.split(';');
+	} else if (criteria === 'chron') {
+		l1Data = material.coverageChron.split(';');
+	} else if (criteria === 'auth') {
+		l1Data = material.authorString.split(',');
+	}
+	l1Data.map(function(dat) {
+		var l1 = dat.trim();
+		if(l1 !== "") {
+			if (typeof treeData[l1] === 'undefined') {
+				treeData[l1] = {};
+			}
+			if(material.references !== null) {
+				var l2Data = material.references.split('\n');
+				l2Data.map(function(ref) {
+					var l2 = ref.trim().replace(/\"/g, "'");
+					if(l2 !== "") {
+						if (typeof treeData[l1][l2] === 'undefined') {
+							treeData[l1][l2] = [];
+						}
+						treeData[l1][l2].push({
+							"name": material.title.replace(/\"/g, "'"),
+							"url": (typeof material.galleys !== undefined && material.galleys.length > 0) ? material.galleys[0].url : ""
+						});
+					}
+				}); 
+			}
+		}
+	});
+}
+
+function populateL2List() {
+	var retArr = [];
+	var selected = $('#l1-data').val();
+	selected.map(function(l1) {
+		Object.keys(treeData[l1]).map(function(l2) {
+			if(retArr.indexOf(l2) === -1) {
+				retArr.push(l2);
+			}
+		});			
+	});
+	retArr.sort(function(a,b) {
+		var na = a.toUpperCase();
+		var nb = b.toUpperCase();
+		if (na < nb) {
+			return -1;
+		}
+		if (na > nb) {
+			return 1;
+		}
+		return 0;
+	});
+	$('#l2-data').empty();
+	$('#l3-panel').hide();
+	d3.selectAll('line.link-l2-l3').remove();
+	retArr.map(function(item) {
+		$('#l2-data').append('<option value="' + item + '" id="' + item.replace(/\W/g, '') + '">' + item + "</option>");
+	});
+	if($('#l2-data').children().length > 0) {
+		$('#l2-panel').show();
+	}
+	connectOptionsL1L2();
+}
+
+function connectOptionsL1L2() {
+	d3.selectAll('line.link-l1-l2').remove();
+	var levelOne = document.getElementById('l1-data');
+	var scrollTopL1 = levelOne.offsetTop + levelOne.scrollTop;
+	var visibleOptionsL1 = [];
+	var heightL1 = levelOne.offsetHeight;
+	var leftL1 = parseFloat($('#dragTarget1').attr('x'));
+	var topL1 = parseFloat($('#dragTarget1').attr('y'));
+	if(typeof $('#dragTarget1').attr('transform') !== 'undefined' && $('#dragTarget1').attr('transform').indexOf('matrix') !== -1) {
+		var matrixL1 = $('#dragTarget1').attr('transform').replace(/\(\)/g, '');
+		matrixL1 = matrixL1.split(' ');
+		leftL1 += parseFloat(matrixL1[4]);
+		topL1 += parseFloat(matrixL1[5]);
+	}
+	$('#l1-data>option').each((c, item) =>
+	{
+		if(item.offsetTop >= scrollTopL1 && (item.offsetTop + item.offsetHeight) <= (scrollTopL1 + heightL1)) {
+			visibleOptionsL1.push(item.value);
+		}
+	});
+	var levelTwo = document.getElementById('l2-data');
+	var scrollTopL2 = levelTwo.offsetTop + levelTwo.scrollTop;
+	var visibleOptionsL2 = [];
+	var heightL2 = levelTwo.offsetHeight;
+	var leftL2 = parseFloat($('#dragTarget2').attr('x'));
+	var topL2 = parseFloat($('#dragTarget2').attr('y'));
+	if(typeof $('#dragTarget2').attr('transform') !== 'undefined' && $('#dragTarget2').attr('transform').indexOf('matrix') !== -1) {
+		var matrixL2 = $('#dragTarget2').attr('transform').replace(/\(\)/g, '');
+		matrixL2 = matrixL2.split(' ');
+		leftL2 += parseFloat(matrixL2[4]);
+		topL2 += parseFloat(matrixL2[5]);
+	}
+	$('#l2-data>option').each((c, item) =>
+	{
+		if(item.offsetTop >= scrollTopL2 && (item.offsetTop + item.offsetHeight) <= (scrollTopL2 + heightL2)) {
+			visibleOptionsL2.push(item.value);
+		}
+	});
+	var selectedOne = $('#l1-data').val();
+	selectedOne.map((l1) => {
+		if(visibleOptionsL1.indexOf(l1) !== -1) {
+			Object.keys(treeData[l1]).map(function(l2) {
+				if(visibleOptionsL2.indexOf(l2) !== -1) {
+					var pnt1 = document.getElementById(l1.replace(/\W/g, ''));
+					var pnt2 = document.getElementById(l2.replace(/\W/g, ''));
+					d3.select("#mySVG").append("line")
+					.attr('x1', leftL1 + pnt1.offsetLeft + pnt1.offsetWidth)
+					.attr('y1', topL1 + pnt1.offsetTop - levelOne.scrollTop + pnt1.offsetHeight/2)
+					.attr('x2', leftL2 + pnt2.offsetLeft)
+					.attr('y2', topL2 + pnt2.offsetTop - levelTwo.scrollTop + pnt2.offsetHeight/2)
+					.attr('class', 'link-l1-l2');
+				}
+			});
+		}
+	});
+}
+
+function connectOptionsL2L3() {
+	d3.selectAll('line.link-l2-l3').remove();
+	var levelTwo = document.getElementById('l2-data');
+	var scrollTopL2 = levelTwo.offsetTop + levelTwo.scrollTop;
+	var visibleOptionsL2 = [];
+	var heightL2 = levelTwo.offsetHeight;
+	var leftL2 = parseFloat($('#dragTarget2').attr('x'));
+	var topL2 = parseFloat($('#dragTarget2').attr('y'));
+	if(typeof $('#dragTarget2').attr('transform') !== 'undefined' && $('#dragTarget2').attr('transform').indexOf('matrix') !== -1) {
+		var matrixL2 = $('#dragTarget2').attr('transform').replace(/\(\)/g, '');
+		matrixL2 = matrixL2.split(' ');
+		leftL2 += parseFloat(matrixL2[4]);
+		topL2 += parseFloat(matrixL2[5]);
+	}
+	$('#l2-data>option').each((c, item) =>
+	{
+		if(item.offsetTop >= scrollTopL2 && (item.offsetTop + item.offsetHeight) <= (scrollTopL2 + heightL2)) {
+			visibleOptionsL2.push(item.value);
+		}
+	});
+	var levelThree = document.getElementById('l3-data');
+	var scrollTopL3 = levelThree.offsetTop + levelThree.scrollTop;
+	var visibleOptionsL3 = [];
+	var heightL3 = levelThree.offsetHeight;
+	var leftL3= parseFloat($('#dragTarget3').attr('x'));
+	var topL3 = parseFloat($('#dragTarget3').attr('y'));
+	if(typeof $('#dragTarget3').attr('transform') !== 'undefined' && $('#dragTarget3').attr('transform').indexOf('matrix') !== -1) {
+		var matrixL3 = $('#dragTarget3').attr('transform').replace(/\(\)/g, '');
+		matrixL3 = matrixL3.split(' ');
+		leftL3 += parseFloat(matrixL3[4]);
+		topL3 += parseFloat(matrixL3[5]);
+	}
+	$('#l3-data>option').each((c, item) =>
+	{
+		if(item.offsetTop >= scrollTopL3 && (item.offsetTop + item.offsetHeight) <= (scrollTopL3 + heightL3)) {
+			visibleOptionsL3.push(item.textContent);
+		}
+	});
+	var selectedOne = $('#l1-data').val();
+	var selectedTwo = $('#l2-data').val();
+	selectedOne.map((l1) => {
+		selectedTwo.map((l2) => {
+			if(visibleOptionsL2.indexOf(l2) !== -1) {
+				if(treeData[l1][l2] === undefined) {
+					return;
+				}
+				treeData[l1][l2].map(function(l3) {
+					if(visibleOptionsL3.indexOf(l3.name) !== -1) {
+						var pnt1 = document.getElementById(l2.replace(/\W/g, ''));
+						var pnt2 = document.getElementById(l3.name.replace(/\W/g, ''));
+						d3.select("#mySVG").append("line")
+						.attr('x1', leftL2 + pnt1.offsetLeft + pnt1.offsetWidth)
+						.attr('y1', topL2 + pnt1.offsetTop - levelTwo.scrollTop + pnt1.offsetHeight/2)
+						.attr('x2', leftL3 + pnt2.offsetLeft)
+						.attr('y2', topL3 + pnt2.offsetTop - levelThree.scrollTop + pnt2.offsetHeight/2)
+						.attr('class', 'link-l2-l3');
+					}
+				});
+			}
+		});
+	});
+}
+
+function populateL3List() {
+	var retArr = [];
+	var l1Selected = $('#l1-data').val();
+	var l2Selected = $('#l2-data').val();
+	$('#l3-data').empty();
+	l1Selected.map(function(l1) {
+		l2Selected.map(function(l2) {
+			if(treeData[l1][l2] === undefined) {
+				return;
+			}
+			treeData[l1][l2].map(function(l3) {
+				var found = false;
+				retArr.map(function(r3) {
+					if(r3.name === l3.name) {
+						found = true;
+					}
+				});
+				if(!found) {
+					retArr.push(l3);
+				}
+			});
+		});			
+	});
+	retArr.sort(function(a,b) {
+		var na = a.name.toUpperCase();
+		var nb = b.name.toUpperCase();
+		if (na < nb) {
+			return -1;
+		}
+		if (na > nb) {
+			return 1;
+		}
+		return 0;
+	});
+	retArr.map(function(item) {
+		$('#l3-data').append('<option value="' + item.url + '" id="' + item.name.replace(/\W/g, '') + '">' + item.name + "</option>");
+	});
+	if($('#l3-data').children().length > 0) {
+		$('#l3-panel').show();
+	}
+	connectOptionsL2L3();
+}
+
+function convertObjectToL1List(node) {
+	var retArr = [];
+	Object.keys(node).map(function(l1) {
+		retArr.push(l1);
+	});
+	retArr.sort(function(a,b) {
+		var na = a.toUpperCase();
+		var nb = b.toUpperCase();
+		if (na < nb) {
+			return -1;
+		}
+		if (na > nb) {
+			return 1;
+		}
+		return 0;
+	});
+	return retArr;
+}
+
+function viewArticle() { 
+	var index = $('#l3-data').prop('selectedIndex');
+	var option = $('#l3-data').prop('options')[index];
+	$('#iFrame_content').attr('src', option.value);
+	$('#myModal').modal('show');
+}
+
+function getMaterialsinIssue(issue, treeData, criteria, callback) {
+	$.get("Issue"+issue.id+".txt", function(Issues_data){
+		var responseJSON = JSON.parse(Issues_data);
+		
+		for(var i = 0; i < responseJSON.length; i++)
+		{
+			processMaterialData(responseJSON[i], criteria, treeData);		
+		}
+		callback();
+	});
+}
+
+//=================drag/drop===============
+var TransformRequestObj
+var TransList
+var DragTarget=null;
+var Dragging = false;
+var DragStartGrabX = 0;
+var DragStartGrabY = 0;
+
+function startDrag(target)
+{
+	if(!Dragging) 
+	{
+		DragTarget = target.parentElement.parentElement;
+		var pnt = DragTarget.ownerSVGElement.createSVGPoint();
+		pnt.x = event.clientX
+		pnt.y = event.clientY
+		var sCTM = DragTarget.getScreenCTM();
+		var Pnt = pnt.matrixTransform(sCTM.inverse());
+		TransformRequestObj = DragTarget.ownerSVGElement.createSVGTransform()
+		var myTransListAnim=DragTarget.transform
+		TransList=myTransListAnim.baseVal
+		DragStartGrabX = Pnt.x
+		DragStartGrabY = Pnt.y
+		Dragging=true;
+
+	}
+}
+
+function drag(evt)
+{
+	if(Dragging)
+	{
+		var pnt = DragTarget.ownerSVGElement.createSVGPoint();
+		pnt.x = evt.clientX;
+		pnt.y = evt.clientY;
+		//---elements in different(svg) viewports, and/or transformed ---
+		var sCTM = DragTarget.getScreenCTM();
+		var Pnt = pnt.matrixTransform(sCTM.inverse());
+		Pnt.x -= DragStartGrabX;
+		Pnt.y -= DragStartGrabY;
+
+		TransformRequestObj.setTranslate(Pnt.x,Pnt.y)
+		TransList.appendItem(TransformRequestObj)
+		TransList.consolidate()
+		connectOptionsL1L2();
+		connectOptionsL2L3();
+	}
+}
+
+function endDrag()
+{
+	Dragging = false ;
+}
+
+function changeFontSize(element, type) {
+	var list = element.parent().parent().find('.scrollable-list').first();
+	var currentSize = parseInt(list.css('font-size'));
+	if(type === '-') {
+		if(currentSize>8) {
+			currentSize-=2;
+		}
+	} else {
+		if(currentSize < 20) {
+			currentSize+=2;
+		}
+	}
+	list.css('font-size', currentSize + 'px');
+	connectOptionsL1L2();
+	connectOptionsL2L3();
+}
+
+</script>
+	
+  </body>
+</html>
